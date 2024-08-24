@@ -1,15 +1,24 @@
 import os
-import numpy as np
 import random
-
+import numpy as np
 import torch
 from torch.utils.data import Dataset
+import matplotlib.pyplot as plt
 import cv2
 try:
     from pycocotools.coco import COCO
 except:
     print('It seems that you do not install cocoapi ...')
     pass
+import sys
+sys.path.append("../")
+def setCurPath(filename):
+    currentPath = os.path.dirname(filename)
+    if currentPath != "":
+        os.chdir(currentPath)
+
+if __name__ == '__main__':
+    setCurPath(__file__)
 from data import create_gt
 
 
@@ -33,8 +42,8 @@ coco_class_index = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 1
                     46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 67,
                     70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90]
 
-coco_root = '/mnt/share/ssd2/dataset/COCO/'
-
+# coco_root = '/mnt/share/ssd2/dataset/COCO/'
+coco_root = '/media/e68d0b9b-67bc-4cb2-9235-69d7bae80077/home/znzz/COCO/'
 
 class COCODataset(Dataset):
     """
@@ -64,10 +73,11 @@ class COCODataset(Dataset):
         self.json_file = json_file
         self.coco = COCO(self.data_dir+'annotations/'+self.json_file)
         self.ids = self.coco.getImgIds()
+        print("==1==", len(self.ids))
         self.img_size = img_size
         self.train = train
         self.stride = stride
-        self.class_ids = sorted(self.coco.getCatIds())
+        self.class_ids = sorted(self.coco.getCatIds()) #80个类的id
         self.name = name
         self.transform = transform
         self.base_transform = base_transform
@@ -75,7 +85,7 @@ class COCODataset(Dataset):
 
 
     def __len__(self):
-        return len(self.ids)
+        return len(self.ids) #118287
 
 
     def pull_image(self, index):
@@ -139,6 +149,10 @@ class COCODataset(Dataset):
 
 
     def pull_item(self, index):
+        """
+        :return: image target h w
+        :return: image [[x1, y1, x2, y2, cls_id]] h w
+        """
         id_ = self.ids[index]
 
         anno_ids = self.coco.getAnnIds(imgIds=[int(id_)], iscrowd=None)
@@ -299,8 +313,39 @@ class COCODataset(Dataset):
 
             return torch.from_numpy(img).permute(2, 0, 1), target, height, width
 
+###################################
+def test_coco_categories():
+    coco = COCO(coco_root + 'annotations/' + 'instances_train2017.json')
+    cats = coco.loadCats(coco.getCatIds())
+    nms = [cat['name'] for cat in cats]
+    print('coco categories:', nms)
+
+    nms = set([cat['supercategory'] for cat in cats])
+    print('coco super categories:', nms)
+    for cat in cats:
+        print("==1==", cat)
+
+def test_coco_anno():
+    coco = COCO(coco_root + 'annotations/' + 'instances_train2017.json')
+    catIds = coco.getCatIds(catNms=['persion', 'dog', 'skateboard'])
+    imgIds = coco.getImgIds(catIds=catIds)
+    img = coco.loadImgs(imgIds[0])[0]
+    import skimage.io as io
+    I = io.imread(img['coco_url'])
+    print(catIds)
+    print("======")
+    print(imgIds)
+    plt.imshow(I)
+    plt.show()
+
+
+def test():
+    # test_coco_categories()
+    test_coco_anno()
 
 if __name__ == "__main__":
+    # test()
+    # exit(0)
     def base_transform(image, size, mean):
         x = cv2.resize(image, (size[1], size[0])).astype(np.float32)
         x -= mean
@@ -321,11 +366,13 @@ if __name__ == "__main__":
                 img_size=img_size,
                 transform=BaseTransform([img_size, img_size], (0, 0, 0)),
                 base_transform=BaseTransform([img_size, img_size], (0, 0, 0)),
-                debug=False,
                 mosaic=True)
-    
+
     for i in range(1000):
         im, gt, h, w = dataset.pull_item(i)
+        print("gt=", gt)
+        print("h=", h)
+        print("w=", w)
         img = im.permute(1,2,0).numpy()[:, :, (2, 1, 0)].astype(np.uint8)
         cv2.imwrite('-1.jpg', img)
         img = cv2.imread('-1.jpg')

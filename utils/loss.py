@@ -10,7 +10,12 @@ class HeatmapLoss(nn.Module):
         self.beta = beta
         self.reduction = reduction
 
-    def forward(self, logits, targets):
+    def forward(self, logits:torch.tensor, targets:torch.tensor):
+        """
+        :param logits:[b,16384,80]
+        :param targets: [b,16384,80]
+        :return:
+        """
         inputs = torch.clamp(torch.sigmoid(logits), min=1e-4, max=1.0 - 1e-4)
         pos_ind = (targets == 1.0).float()
         neg_ind = (targets != 1.0).float()

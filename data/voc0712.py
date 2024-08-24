@@ -16,6 +16,16 @@ if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
     import xml.etree.ElementTree as ET
+import os,sys
+sys.path.append("../")
+def setCurPath(filename):
+    currentPath = os.path.dirname(filename)
+    if currentPath != "":
+        os.chdir(currentPath)
+
+if __name__ == '__main__':
+    setCurPath(__file__)
+
 from data import create_gt
 
 
@@ -27,7 +37,7 @@ VOC_CLASSES = (  # always index 0
     'sheep', 'sofa', 'train', 'tvmonitor')
 
 # note: if you used our download scripts, this should be right
-VOC_ROOT = "//mnt/share/ssd2/dataset/VOCdevkit/"
+VOC_ROOT = '/media/e68d0b9b-67bc-4cb2-9235-69d7bae80077/home/znzz/voc/VOCdevkit/'
 
 
 class VOCAnnotationTransform(object):
@@ -300,7 +310,7 @@ if __name__ == "__main__":
     # dataset
     dataset = VOCDetection(root=VOC_ROOT, 
                            img_size=img_size,
-                           image_sets=[('2007', 'trainval')],
+                           image_sets=[('2012', 'trainval')],
                            transform=BaseTransform([img_size, img_size], (0, 0, 0)),
                            base_transform=BaseTransform([img_size, img_size], (0, 0, 0)),
                            target_transform=VOCAnnotationTransform(), 

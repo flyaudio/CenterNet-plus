@@ -18,19 +18,19 @@ def parse_args():
                         help='centernet_plus.')
     parser.add_argument('-bk', '--backbone', default='r18',
                         help='r18, r34, r50, r101')
-    parser.add_argument('--trained_model', default='weights/',
+    parser.add_argument('--trained_model', default='weights/centernet-p_r18_iou_aw_29.9_49.1.pth',
                         type=str, help='Trained state_dict file path to open')
     parser.add_argument('--mode', default='image',
                         type=str, help='Use the data from image, video or camera')
     parser.add_argument('-size', '--input_size', default=512, type=int,
                         help='input_size')
-    parser.add_argument('--cuda', action='store_true', default=False,
+    parser.add_argument('--cuda', action='store_true', default=True,
                         help='Use cuda')
     parser.add_argument('--conf_thresh', default=0.3, type=float,
                         help='Confidence threshold')
     parser.add_argument('--nms_thresh', default=0.45, type=float,
                         help='NMS threshold')
-    parser.add_argument('--path_to_img', default='data/demo/Images/',
+    parser.add_argument('--path_to_img', default='data/demo/val2017/',
                         type=str, help='The path to image files')
     parser.add_argument('--path_to_vid', default='data/demo/video/',
                         type=str, help='The path to video files')
@@ -58,7 +58,7 @@ def vis(img, bbox_pred, scores, cls_inds, class_color, thresh=0.3):
             cv2.rectangle(img, (int(xmin), int(ymin)), (int(xmax), int(ymax)), class_color[int(cls_indx)], 2)
             cv2.rectangle(img, (int(xmin), int(abs(ymin)-15)), (int(xmin+box_w*0.55), int(ymin)), class_color[int(cls_indx)], -1)
 
-            cv2.putText(img, mess, (int(xmin), int(ymin)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 2)
+            cv2.putText(img, mess, (int(xmin), int(ymin)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1)
     return img
 
 
@@ -90,7 +90,8 @@ def detect(net, device, transform, thresh, mode='image', path_to_img=None, path_
             # map the boxes to origin image scale
             bbox_pred *= scale
 
-            frame_processed = vis(frame, bbox_pred, scores, cls_inds, class_color, setup, thresh=thresh)
+            frame_processed = vis(frame, bbox_pred, scores, cls_inds, class_color, thresh=thresh)
+
             cv2.imshow('detection result', frame_processed)
             cv2.waitKey(1)
         cap.release()
@@ -116,9 +117,9 @@ def detect(net, device, transform, thresh, mode='image', path_to_img=None, path_
             # map the boxes to origin image scale
             bbox_pred *= scale
 
-            img_processed = vis(img, bbox_pred, scores, cls_inds, class_color=class_color, setup=setup, thresh=thresh)
+            img_processed = vis(img, bbox_pred, scores, cls_inds, class_color=class_color, thresh=thresh)
             cv2.imshow('detection result', img_processed)
-            cv2.waitKey(0)
+            cv2.waitKey(1000)
 
     # ------------------------- Video ---------------------------
     elif mode == 'video':
@@ -181,7 +182,17 @@ def run():
                           use_nms=args.use_nms
                           )
 
-    net.load_state_dict(torch.load(args.trained_model, map_location='cuda'))
+    print("=================")
+    oldParam = net.state_dict()
+    newParam = torch.load(args.trained_model, map_location='cuda')
+    for k, v in oldParam.items():
+        if k in newParam:
+            oldParam[k] = newParam[k]
+        else:
+            print("no", k)
+
+    net.load_state_dict(oldParam)        
+    # net.load_state_dict(torch.load(args.trained_model, map_location='cuda'))
     net.to(device).eval()
     print('Finished loading model!')
 

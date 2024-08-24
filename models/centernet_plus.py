@@ -101,10 +101,10 @@ class CenterNetPlus(nn.Module):
             nn.Conv2d(64, 2, kernel_size=1)
         )
 
-        # self.iou_aware_pred = nn.Sequential(
-        #     Conv(p2, 64, k=3, p=1, act=act),
-        #     nn.Conv2d(64, 1, kernel_size=1)
-        # )
+        self.iou_aware_pred = nn.Sequential(
+            Conv(p2, 64, k=3, p=1, act=act),
+            nn.Conv2d(64, 1, kernel_size=1)
+        )
 
         # init weight of cls_pred
         init_prob = 0.01
@@ -207,9 +207,31 @@ class CenterNetPlus(nn.Module):
         """ fmap = [C, H, W] """
         save_path = os.path.join('vis_feat/centernetPlus/' + name)
         os.makedirs(save_path, exist_ok=True)
+        
+        if len(fmap.shape) == 3: #fmap = [H, W]
+            f = torch.sum(fmap, dim=0)
+        else:
+            f = fmap
+        
+        if normal:
+            # normalization
+            max_val = torch.max(f)
+            min_val = torch.min(f)
+            f = (f - min_val) / (max_val - min_val)
+        f = f.cpu().numpy()
+        # resize
+        f = cv2.resize(f, (self.input_size, self.input_size), interpolation=cv2.INTER_NEAREST)
+        # plt.imsave(os.path.join(save_path, name+'.jpg'), f)
+        cv2.imwrite(os.path.join(save_path, name+'.jpg'), (f*255).astype(np.uint8))
+
+    def vis_fmap_bak(self, fmap, normal=True, name='p3'):
+        """ fmap = [C, H, W] """
+        save_path = os.path.join('vis_feat/centernetPlus/' + name)
+        os.makedirs(save_path, exist_ok=True)
         f = fmap
         
-        f = torch.sum(fmap, dim=0)
+        # f = torch.sum(fmap, dim=0)
+        f = fmap[1,:]
         if normal:
             # normalization
             max_val = torch.max(f)
@@ -234,21 +256,21 @@ class CenterNetPlus(nn.Module):
         p2 = self.smooth2(self.latter2(c2) + self.deconv2(p3))
 
         # detection head
-        cls_pred = self.cls_pred(p2)
-        txty_pred = self.txty_pred(p2)
-        twth_pred = self.twth_pred(p2)
-        # iou_aware_pred = self.iou_aware_pred(p2)
-        
+        cls_pred = self.cls_pred(p2) #[b,80,128,128]
+        txty_pred = self.txty_pred(p2)#[b,2,128,128]
+        twth_pred = self.twth_pred(p2)#[b,2,128,128]
+        iou_aware_pred = self.iou_aware_pred(p2)#[b,1,128,128]
+
         # train
         if self.trainable:
             # [B, H*W, num_classes]
-            cls_pred = cls_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, self.num_classes)
+            cls_pred = cls_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, self.num_classes) #[b,16384,80]
             # [B, H*W, 2]
             txty_pred = txty_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 2)
             # [B, H*W, 2]
             twth_pred = twth_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 2)
             # # # [B, H*W, 1]
-            # iou_aware_pred = iou_aware_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 1)
+            iou_aware_pred = iou_aware_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 1)
 
             # compute iou between pred bboxes and gt bboxes
             txtytwth_pred = torch.cat([txty_pred, twth_pred], dim=-1)
@@ -257,17 +279,27 @@ class CenterNetPlus(nn.Module):
             iou_pred = box_ops.iou_score(x1y1x2y2_pred, x1y1x2y2_gt, batch_size=B)
 
             # compute loss
-            cls_loss, txty_loss, twth_loss, iou_loss, iou_aware_loss = loss.loss(
-                                                                        pred_cls=cls_pred, 
-                                                                        pred_txty=txty_pred, 
-                                                                        pred_twth=twth_pred, 
-                                                                        pred_iou=iou_pred,
-                                                                        pred_iou_aware=iou_aware_pred,
-                                                                        label=target, 
-                                                                        num_classes=self.num_classes
-                                                                        )
+            # cls_loss, txty_loss, twth_loss, iou_loss, iou_aware_loss = loss.loss(
+            #                                                             pred_cls=cls_pred, 
+            #                                                             pred_txty=txty_pred, 
+            #                                                             pred_twth=twth_pred, 
+            #                                                             pred_iou=iou_pred,
+            #                                                             pred_iou_aware=iou_aware_pred,
+            #                                                             label=target, 
+            #                                                             num_classes=self.num_classes
+            #                                                             )
             
-            return cls_loss, txty_loss, twth_loss, iou_loss, iou_aware_loss  
+            # return cls_loss, txty_loss, twth_loss, iou_loss, iou_aware_loss  
+            return loss.loss(
+                            pred_cls=cls_pred, 
+                            pred_txty=txty_pred, 
+                            pred_twth=twth_pred, 
+                            pred_iou=iou_pred,
+                            pred_iou_aware=iou_aware_pred,
+                            label=target, 
+                            num_classes=self.num_classes
+                            )
+            
 
         # test
         else:
@@ -281,7 +313,7 @@ class CenterNetPlus(nn.Module):
                 # self.vis_fmap(p4[0], normal=True, name='p4')    
                 # self.vis_fmap(p5[0], normal=True, name='p5')    
                 # self.vis_fmap(c5[0], normal=True, name='c5')    
-                # self.vis_fmap(cls_pred[0], normal=False, name='cls_pred')    
+                self.vis_fmap(cls_pred[0][-1], normal=True, name='cls_pred_0')
 
                 # simple nms
                 hmax = F.max_pool2d(cls_pred, kernel_size=5, padding=2, stride=1)

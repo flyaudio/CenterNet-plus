@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-
+#https://zhuanlan.zhihu.com/p/96856635
 def gaussian_radius(det_size, min_overlap=0.7):
     box_w, box_h  = det_size
     a1 = 1

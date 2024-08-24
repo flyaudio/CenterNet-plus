@@ -17,6 +17,7 @@ from utils.augmentations import SSDAugmentation, ColorAugmentation
 from utils.cocoapi_evaluator import COCOAPIEvaluator
 from utils.vocapi_evaluator import VOCAPIEvaluator
 from utils.modules import ModelEMA
+import matplotlib.pyplot as plt
 
 def parse_args():
     parser = argparse.ArgumentParser(description='CenterNet-plus Detection')
@@ -24,7 +25,7 @@ def parse_args():
                         help='centernet_plus, baseline')
     parser.add_argument('-bk', '--backbone', default='r18',
                         help='r18, r34, r50, r101')
-    parser.add_argument('-d', '--dataset', default='voc',
+    parser.add_argument('-d', '--dataset', default='coco',
                         help='voc or coco')
     parser.add_argument('--cuda', action='store_true', default=False,
                         help='use cuda.')
@@ -34,7 +35,7 @@ def parse_args():
                         help='use gauss smooth.')
     parser.add_argument('--ema', action='store_true', default=False,
                         help='use ema.')
-    parser.add_argument('--batch_size', default=32, type=int, 
+    parser.add_argument('--batch_size', default=1, type=int, 
                         help='Batch size for training')
     parser.add_argument('--lr', default=1e-3, type=float, 
                         help='initial learning rate')
@@ -52,11 +53,11 @@ def parse_args():
                         help='Weight decay for SGD')
     parser.add_argument('--gamma', default=0.1, type=float, 
                         help='Gamma update for SGD')
-    parser.add_argument('--num_workers', default=8, type=int, 
+    parser.add_argument('--num_workers', default=2, type=int, 
                         help='Number of workers used in dataloading')
     parser.add_argument('--eval_epoch', type=int,
-                            default=10, help='interval between evaluations')
-    parser.add_argument('--tfboard', action='store_true', default=False,
+                            default=1, help='interval between evaluations')
+    parser.add_argument('--tfboard', action='store_true', default=True,
                         help='use tensorboard')
     parser.add_argument('--save_folder', default='weights/', type=str, 
                         help='Gamma update for SGD')
@@ -168,7 +169,7 @@ def train():
                     shuffle=True, 
                     collate_fn=detection_collate,
                     num_workers=args.num_workers,
-                    pin_memory=True
+                    pin_memory=False #True
                     )
 
     # build model        
@@ -360,6 +361,95 @@ def vis_data(images, targets, input_size):
     cv2.imshow('img', img_)
     cv2.waitKey(0)
 
+def test():
+    args = parse_args()
+    device = torch.device("cpu")
 
+    # config
+    model_name = args.version
+    print('Model name: ', model_name)
+
+    if model_name == 'baseline':
+        from models.baseline import Baseline as centernet
+        cfg = train_baseline_cfg
+
+    elif model_name == 'centernet_plus':
+        from models.centernet_plus import CenterNetPlus as centernet
+        cfg = train_cfg
+
+    else:
+        print('Unknown version !!!')
+        exit()
+
+    # img_size
+    train_size = cfg['train_size']
+    val_size = cfg['val_size']
+    print("val_size=", val_size)
+
+    # dataset and evaluator
+    if args.dataset == 'coco':
+        data_dir = coco_root
+        num_classes = 80
+        dataset = COCODataset(
+            data_dir=data_dir,
+            img_size=train_size,
+            # json_file='instances_val2017.json',
+            # name='val2017',
+            train=True,
+            stride=4,
+            transform=SSDAugmentation(train_size),
+            base_transform=ColorAugmentation(train_size),
+            mosaic=args.mosaic
+        )
+
+    else:
+        print('unknow dataset !! Only support voc and coco !!')
+        exit(0)
+
+    print('Training model on:', dataset.name)
+    print('The dataset size:', len(dataset))
+    print("----------------------------------------------------------")
+
+    # dataloader
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=1,
+        # shuffle=True,
+        collate_fn=detection_collate,
+        num_workers=1,
+        pin_memory=False
+    )
+    # build model
+    net = centernet(device=device,
+                        input_size=train_size,
+                        num_classes=num_classes,
+                        trainable=True,
+                        backbone=args.backbone)
+    # model = net
+    # model.to(device).train()
+    # ema = ModelEMA(model) if args.ema else None
+
+    for iter_i, (images, targets) in enumerate(dataloader):
+        images = images.to(device)
+        targets = targets.to(device)
+        # aa = targets.permute(0, 2, 3, 1)
+        # aa = images.permute(0, 3, 2, 1)
+        print(images.shape)
+        print(targets.shape)
+        # cls_loss, txty_loss, twth_loss, iou_loss, iou_aware_loss = model(images, target=targets)
+        # print(cls_loss.shape)
+        # print(cls_loss)
+        plt.figure(1)
+        plt.imshow(images[0].permute(1,2,0))
+        plt.figure(2)
+        persion_target = targets[:,:,0].view(-1,128)
+        txty_target = targets[:,:,80].view(-1,128)
+        pos_ind = (persion_target == 1.0).float()
+        plt.imshow(txty_target)
+        plt.figure(3)
+        plt.imshow(torch.log(torch.clamp(persion_target, min=1e-4, max=1.0 - 1e-4)))
+        plt.show()
+        break
 if __name__ == '__main__':
-    train()
+    # train()
+    test()
