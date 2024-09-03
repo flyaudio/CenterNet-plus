@@ -10,6 +10,41 @@ import torchvision
 import torchvision.transforms as transforms
 import numpy as np
 import matplotlib.pyplot as plt
+import setup
+if __name__ == '__main__':
+	setup.setCurPath(__file__)
+import util
+
+
+class HeatmapLoss(nn.Module):
+	def __init__(self, alpha=2, beta=4, reduction='mean'):
+		super().__init__()
+		self.alpha = alpha
+		self.beta = beta
+		self.reduction = reduction
+
+	def forward(self, logits:torch.tensor, targets:torch.tensor) -> torch.tensor:
+		"""
+		:param logits:[b,512/16,80]
+		:param targets: [b,512/16,80]
+		:return:loss(sum | mean)
+		"""
+		inputs = torch.clamp(torch.sigmoid(logits), min=1e-4, max=1.0 - 1e-4)
+		pos_ind = (targets == 1.0).float()
+		neg_ind = (targets != 1.0).float()
+		pos_loss = -pos_ind * (1.0 - inputs)**self.alpha * torch.log(inputs)
+		neg_loss = -neg_ind * (1.0 - targets)**self.beta * (inputs)**self.alpha * torch.log(1.0 - inputs)
+		loss = pos_loss + neg_loss
+
+		if self.reduction == 'mean':
+			batch_size = loss.size(0)
+			loss = torch.sum(loss) / batch_size
+
+		if self.reduction == 'sum':
+			loss = torch.sum(loss) / batch_size
+
+		return loss
+
 
 class ConvResidual(nn.Module):
 	def __init__(self, inchannel, outchannel, k,s=1,p=1,d=1):
@@ -197,11 +232,71 @@ class Module(nn.Module):
 		out = self.fc(out)
 		return out
 
+class TinyNet(Module):
+	def __init__(self,device, input_size=None, trainable=False, num_classes=None, backbone='r18', conf_thresh=0.05, nms_thresh=0.45, topk=100, gs=1.0, use_nms=False):
+		super().__init__()
+		self.device = device
+		self.input_size = input_size
+		self.trainable = trainable
+		self.num_classes = num_classes
+		# self.bk = backbone
+		# self.conf_thresh = conf_thresh
+		# self.nms_thresh = nms_thresh
+		# self.stride = 4
+		# self.topk = topk
+		# self.gs = gs
+		# self.use_nms = use_nms
+		# self.grid_cell = self.create_grid(input_size)
+		self.cls_loss_func = HeatmapLoss(reduction='mean')
+		self.txty_loss_func = nn.BCEWithLogitsLoss(reduction='none')
+		self.twth_loss_func = nn.SmoothL1Loss(reduction='none')
+
+	def forward(self, x, label=None):
+		# cls_pred  # [b,80,32,32]
+		# txty_pred # [b,2,32,32]
+
+		cls_pred, txty_pred = super().forward(x)
+		B = cls_pred.size(0)
+		assert cls_pred.size(0) == txty_pred.size(0)
+		if self.trainable:
+			# [B, H*W, num_classes]
+			cls_pred = cls_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, self.num_classes)  # [b,1024,80]
+			# [B, H*W, 2]
+			txty_pred = txty_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 2) # [b,1024,2]
+
+			#groundtruth
+			gt_cls = label[:, :, :self.num_classes]  #todo,gt的维度也要变为32*32
+			gt_txty = label[:, :, self.num_classes: self.num_classes + 2]
+			# gt_twth = label[:, :, num_classes + 2: num_classes + 4]
+			gt_box_scale_weight = label[:, :, num_classes + 4]
+			cls_loss = self.cls_loss_func(cls_pred, gt_cls)
+
+			# box loss
+			txty_loss = torch.sum(torch.sum(self.txty_loss_func(txty_pred, gt_txty), dim=-1) * gt_box_scale_weight) / B
+			# twth_loss = torch.sum(torch.sum(self.twth_loss_func(pred_twth, gt_twth), dim=-1) * gt_box_scale_weight) / B
+
+			totalLoss = cls_loss + txty_loss
+			return totalLoss
+		else: #test
+			with torch.no_grad():
+				# batch_size = 1
+				cls_pred = torch.sigmoid(cls_pred)
+				# self.vis_fmap(cls_pred[0][-1], normal=True, name='cls_pred_0')
+
+				# simple nms
+				hmax = F.max_pool2d(cls_pred, kernel_size=5, padding=2, stride=1)
+				keep = (hmax == cls_pred).float()
+				cls_pred *= keep
+
 
 def train_on_cifa10():
 	""" train backbone&neck on cifa10"""
-	# check gpu
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	saveDir = os.path.join('./weights/')
+	os.makedirs(saveDir, exist_ok=True)
+
+	tblogger = util.getTensorBoard()
+	util.startTensorboard('./log/')
 
 	# set hyperparameter
 	EPOCH = 920
@@ -223,10 +318,10 @@ def train_on_cifa10():
 		transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
 	])
 
-	trainset = torchvision.datasets.CIFAR10(root='../data', train=True, download=True, transform=transform_train)
+	trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
 	trainloader = torch.utils.data.DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
-	testset = torchvision.datasets.CIFAR10(root='../data', train=False, download=True, transform=transform_test)
+	testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 	testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=2)
 
 	# labels in CIFAR10
@@ -235,6 +330,13 @@ def train_on_cifa10():
 	# define tiny-net
 	net = Module()
 	net.to(device)
+	# keep training
+	resume = True
+	pthFile = "./weights/tinyOnCifa10_355_83.630.pth"
+	if resume:
+		assert os.path.exists(pthFile)
+		print('keep training model: %s' % (pthFile))
+		net.load_state_dict(torch.load(pthFile, map_location=device))
 
 	# define loss funtion & optimizer
 	criterion = nn.CrossEntropyLoss()
@@ -266,8 +368,10 @@ def train_on_cifa10():
 			_, predicted = torch.max(outputs.data, 1)
 			total += labels.size(0)
 			correct += predicted.eq(labels.data).cpu().sum()
-			print('[epoch:%d, iter:%d] Loss: %.03f | Acc: %.3f%% '
-				  % (epoch + 1, (i + 1 + epoch * length), sum_loss / (i + 1), 100. * correct / total))
+			tblogger.add_scalar('train/Loss', sum_loss / (i + 1), i + epoch * length)
+			tblogger.add_scalar('train/Acc', 100. * correct / total, i + epoch * length)
+			# print('[epoch:%d, iter:%d] Loss: %.03f | Acc: %.3f%% '
+			# 	  % (epoch, (i + epoch * length), sum_loss / (i + 1), 100. * correct / total))
 
 		# get the ac with testdataset in each epoch
 		print('Waiting Test...')
@@ -282,7 +386,12 @@ def train_on_cifa10():
 				_, predicted = torch.max(outputs.data, 1)
 				total += labels.size(0)
 				correct += (predicted == labels).sum()
-			print('Test\'s ac is: %.3f%%' % (100 * correct / total))
+			# print('Test\'s ac is: %.3f%%' % (100 * correct / total))
+			tblogger.add_scalar('test/Acc', 100. * correct / total, epoch)
+			print('Saving state, epoch:', epoch)
+			torch.save(net.state_dict(), os.path.join(saveDir,  'tinyOnCifa10_' + repr(epoch) + '_' +'%.3f'%(100 * correct / total) + '.pth'),
+					   _use_new_zipfile_serialization=False
+					   )
 
 	print('Train has finished, total epoch is %d' % EPOCH)
 

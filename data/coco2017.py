@@ -150,8 +150,8 @@ class COCODataset(Dataset):
 
     def pull_item(self, index):
         """
-        :return: image target h w
-        :return: image [[x1, y1, x2, y2, cls_id]] h w
+        :return: image target h w;
+        target=[[xmin, ymin, xmax, ymax, cls_id]]
         """
         id_ = self.ids[index]
 
@@ -176,6 +176,7 @@ class COCODataset(Dataset):
         # start here :
         target = []
         for anno in annotations:
+            #[x_min, y_min, width, height] -> [x_min, y_min, x_max, y_max]
             x1 = np.max((0, anno['bbox'][0]))
             y1 = np.max((0, anno['bbox'][1]))
             x2 = np.min((width - 1, x1 + np.max((0, anno['bbox'][2] - 1))))
@@ -189,6 +190,8 @@ class COCODataset(Dataset):
                 y2 /= height
 
                 target.append([x1, y1, x2, y2, cls_id])  # [xmin, ymin, xmax, ymax, label_ind]
+                print([x1, y1, x2, y2, cls_id])  # [xmin, ymin, xmax, ymax, label_ind]
+
         # end here .
         # mosaic augmentation
         if self.mosaic and np.random.randint(2):
@@ -368,11 +371,12 @@ if __name__ == "__main__":
                 base_transform=BaseTransform([img_size, img_size], (0, 0, 0)),
                 mosaic=True)
 
-    for i in range(1000):
+    for i in range(3):
         im, gt, h, w = dataset.pull_item(i)
-        print("gt=", gt)
+        print("gt=", gt.shape)
         print("h=", h)
         print("w=", w)
+        assert im.shape[1] == im.shape[2] == img_size
         img = im.permute(1,2,0).numpy()[:, :, (2, 1, 0)].astype(np.uint8)
         cv2.imwrite('-1.jpg', img)
         img = cv2.imread('-1.jpg')

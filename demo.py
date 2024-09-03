@@ -18,7 +18,8 @@ def parse_args():
                         help='centernet_plus.')
     parser.add_argument('-bk', '--backbone', default='r18',
                         help='r18, r34, r50, r101')
-    parser.add_argument('--trained_model', default='weights/centernet-p_r18_iou_aw_29.9_49.1.pth',
+    parser.add_argument('--trained_model', default='weights/coco/centernet_plus/centernet_plus_32_0.17.pth',
+    # parser.add_argument('--trained_model', default='weights/centernet-p_r18_iou_aw_29.9_49.1.pth',
                         type=str, help='Trained state_dict file path to open')
     parser.add_argument('--mode', default='image',
                         type=str, help='Use the data from image, video or camera')
@@ -119,7 +120,7 @@ def detect(net, device, transform, thresh, mode='image', path_to_img=None, path_
 
             img_processed = vis(img, bbox_pred, scores, cls_inds, class_color=class_color, thresh=thresh)
             cv2.imshow('detection result', img_processed)
-            cv2.waitKey(1000)
+            cv2.waitKey()
 
     # ------------------------- Video ---------------------------
     elif mode == 'video':

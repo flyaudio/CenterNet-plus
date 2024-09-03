@@ -50,7 +50,9 @@ def giou_score(bboxes_a, bboxes_b):
 if __name__ == '__main__':
     box1 = torch.tensor([[10, 10, 20, 20]])
     box2 = torch.tensor([[15, 15, 25, 25]])
-    iou = iou_score(box1, box2)
+    iou = iou_score(box1, box1, box1.size(0))
+    print(iou)
+    iou = iou_score(box1, box2, box1.size(0))
     print(iou)
     giou = giou_score(box1, box2)
     print(giou)

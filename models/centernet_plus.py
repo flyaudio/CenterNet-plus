@@ -130,8 +130,9 @@ class CenterNetPlus(nn.Module):
 
     def decode_boxes(self, pred):
         """
+        :param pred: tensor; e.g. [b,128*128,4]
         input box :  [delta_x, delta_y, sqrt(w), sqrt(h)]
-        output box : [xmin, ymin, xmax, ymax]
+        output box : [xmin, ymin, xmax, ymax]; tensor size=[b,128*128,4]
         """
         output = torch.zeros_like(pred)
         pred[:, :, :2] = (self.grid_cell + self.gs * torch.sigmoid(pred[:, :, :2]) - (self.gs - 1.0) / 2) * self.stride
@@ -159,7 +160,7 @@ class CenterNetPlus(nn.Module):
 
     def _topk(self, scores):
         B, C, H, W = scores.size()
-        
+                                                    #batch class
         topk_scores, topk_inds = torch.topk(scores.view(B, C, -1), self.topk)
 
         topk_inds = topk_inds % (H * W)

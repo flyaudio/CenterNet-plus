@@ -105,6 +105,10 @@ def train():
         from models.centernet_plus import CenterNetPlus as centernet
         cfg = train_cfg
 
+    elif model_name == "tiny":
+        from models.test_TinyNet import Module as centernet
+        cfg = train_cfg
+
     else:
         print('Unknown version !!!')
         exit()
@@ -174,10 +178,10 @@ def train():
 
     # build model        
     net = centernet(device=device, 
-                        input_size=train_size, 
-                        num_classes=num_classes, 
-                        trainable=True, 
-                        backbone=args.backbone)
+                    input_size=train_size,
+                    num_classes=num_classes,
+                    trainable=True,
+                    backbone=args.backbone)
     model = net
     model.to(device).train()
     ema = ModelEMA(model) if args.ema else None

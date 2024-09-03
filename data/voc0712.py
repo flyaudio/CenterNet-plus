@@ -292,14 +292,14 @@ class VOCDetection(data.Dataset):
 
 
 if __name__ == "__main__":
-    def base_transform(image, size, mean):
+    def base_transform(image: np.array, size: list, mean) -> np.array:
         x = cv2.resize(image, (size[1], size[0])).astype(np.float32)
         x -= mean
         x = x.astype(np.float32)
         return x
 
     class BaseTransform:
-        def __init__(self, size, mean):
+        def __init__(self, size: list, mean: tuple):
             self.size = size
             self.mean = np.array(mean, dtype=np.float32)
 
@@ -315,7 +315,7 @@ if __name__ == "__main__":
                            base_transform=BaseTransform([img_size, img_size], (0, 0, 0)),
                            target_transform=VOCAnnotationTransform(), 
                             mosaic=True)
-    for i in range(1000):
+    for i in range(3):
         im, gt, h, w = dataset.pull_item(i)
         img = im.permute(1,2,0).numpy()[:, :, (2, 1, 0)].astype(np.uint8)
         cv2.imwrite('-1.jpg', img)
