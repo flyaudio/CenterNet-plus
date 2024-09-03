@@ -3,6 +3,8 @@ import cv2
 import time
 import numpy as np
 
+g_nn_data = '/media/000C868A0004E031/user_data/other/nn_data'
+
 g_tb_logger = None
 def getTensorBoard(suffix: str=""):
 	from torch.utils.tensorboard import SummaryWriter
@@ -21,14 +23,6 @@ def startTensorboard(folder):
 	g_tensorboard_thread = threading.Thread(target=impl, args=(folder,))
 	g_tensorboard_thread.start()
 
-def test():
-	import torch
-	cls_pred = torch.rand((2, 5, 4))
-	print(cls_pred)
-	print(cls_pred.shape)
-	# values, indices = cls_pred.topk(1, dim=0, largest=True, sorted=True)
-	values, indices = torch.topk(cls_pred,1)
-	print(values)
 
 
 def base_transform(image, size, mean):
@@ -46,6 +40,15 @@ class BaseTransform:
 	def __call__(self, image, boxes=None, labels=None):
 		return base_transform(image, self.size, self.mean), boxes, labels
 
+#########################################################3
+def test():
+	import torch
+	cls_pred = torch.rand((2, 5, 4))
+	print(cls_pred)
+	print(cls_pred.shape)
+	# values, indices = cls_pred.topk(1, dim=0, largest=True, sorted=True)
+	values, indices = torch.topk(cls_pred,1)
+	print(values)
 
 if __name__ == '__main__':
 	test()

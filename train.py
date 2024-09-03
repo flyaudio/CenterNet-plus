@@ -158,6 +158,12 @@ def train():
                         transform=BaseTransform(val_size)
                         )
     
+    elif args.dataset == 'comba':
+        import data.comba
+        dataset = data.comba.PointsDataset(
+            train=True,
+            stride=4
+        )
     else:
         print('unknow dataset !! Only support voc and coco !!')
         exit(0)

@@ -118,7 +118,7 @@ def test(net,
             cv2.imshow('detection', img_processed)
             cv2.waitKey(0)
         # save result
-        cv2.imwrite(os.path.join(save_path, str(index).zfill(6) +'.jpg'), img_processed)
+        cv2.imwrite(os.path.join(save_path, str(index).zfill(6) +'.png'), img_processed)
 
 
 if __name__ == '__main__':

@@ -188,9 +188,7 @@ class COCODataset(Dataset):
                 y1 /= height
                 x2 /= width
                 y2 /= height
-
                 target.append([x1, y1, x2, y2, cls_id])  # [xmin, ymin, xmax, ymax, label_ind]
-                print([x1, y1, x2, y2, cls_id])  # [xmin, ymin, xmax, ymax, label_ind]
 
         # end here .
         # mosaic augmentation

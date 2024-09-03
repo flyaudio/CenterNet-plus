@@ -52,6 +52,7 @@ def generate_txtytwth(gt_label, w, h, s):
 
     if box_w < 1e-4 or box_h < 1e-4:
         print('A dirty data !!!')
+        assert False
         return False    
 
     # map center point of box to the grid cell
@@ -88,7 +89,6 @@ def gt_creator(img_size, stride, num_classes, label_lists=[]):
 
         result = generate_txtytwth(gt_label, w, h, s)
         if result:
-            print("result=", result)
             grid_x, grid_y, tx, ty, tw, th, weight, rw, rh, x1, y1, x2, y2 = result
 
             gt_tensor[grid_y, grid_x, cls_id] = 1.0

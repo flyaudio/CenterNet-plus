@@ -1,8 +1,11 @@
+import datetime
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 from utils import Conv, ResizeConv, DilateEncoder, SPP
 from utils import box_ops, loss
+import util
 from backbone import *
 import numpy as np
 
@@ -204,6 +207,18 @@ class CenterNetPlus(nn.Module):
         return keep
 
 
+    def show_feat(self, feat, im, name="feat", save=True):
+        im = im.permute(1, 2, 0).numpy()[:, :, (2, 1, 0)].astype(np.uint8)
+        im = cv2.resize(im, (feat.size(1), feat.size(0)), interpolation=cv2.INTER_NEAREST)
+        ind = np.where(feat.cpu().numpy() > 0.5)
+        im[ind] = (255,0,0)
+
+        if save:
+            im = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+            now = datetime.datetime.now()
+            name = datetime.datetime.strftime(now, '%Y%m%d_%H%M%S_%f')
+            ret = cv2.imwrite(os.path.join(util.g_nn_data, name + '.png'), cv2.resize(im,(1024,1024), interpolation=cv2.INTER_NEAREST))
+
     def vis_fmap(self, fmap, normal=True, name='p3'):
         """ fmap = [C, H, W] """
         save_path = os.path.join('vis_feat/centernetPlus/' + name)
@@ -242,7 +257,7 @@ class CenterNetPlus(nn.Module):
         # resize
         f = cv2.resize(f, (self.input_size, self.input_size), interpolation=cv2.INTER_NEAREST)
         # plt.imsave(os.path.join(save_path, name+'.jpg'), f)
-        cv2.imwrite(os.path.join(save_path, name+'.png'), (f*255).astype(np.uint8))
+        cv2.imwrite(os.path.join(save_path, name+'.jpg'), (f*255).astype(np.uint8))
 
 
     def forward(self, x, target=None):
@@ -260,7 +275,7 @@ class CenterNetPlus(nn.Module):
         cls_pred = self.cls_pred(p2) #[b,80,128,128]
         txty_pred = self.txty_pred(p2)#[b,2,128,128]
         twth_pred = self.twth_pred(p2)#[b,2,128,128]
-        iou_aware_pred = self.iou_aware_pred(p2)#[b,1,128,128]
+        # iou_aware_pred = self.iou_aware_pred(p2)#[b,1,128,128]
 
         # train
         if self.trainable:
@@ -269,34 +284,21 @@ class CenterNetPlus(nn.Module):
             # [B, H*W, 2]
             txty_pred = txty_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 2)
             # [B, H*W, 2]
-            twth_pred = twth_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 2)
+            # twth_pred = twth_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 2)
             # # # [B, H*W, 1]
-            iou_aware_pred = iou_aware_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 1)
+            # iou_aware_pred = iou_aware_pred.permute(0, 2, 3, 1).contiguous().view(B, -1, 1)
 
             # compute iou between pred bboxes and gt bboxes
-            txtytwth_pred = torch.cat([txty_pred, twth_pred], dim=-1)
-            x1y1x2y2_pred = (self.decode_boxes(txtytwth_pred) / self.input_size).view(-1, 4)
-            x1y1x2y2_gt = target[:, :, -4:].view(-1, 4)
-            iou_pred = box_ops.iou_score(x1y1x2y2_pred, x1y1x2y2_gt, batch_size=B)
-
-            # compute loss
-            # cls_loss, txty_loss, twth_loss, iou_loss, iou_aware_loss = loss.loss(
-            #                                                             pred_cls=cls_pred, 
-            #                                                             pred_txty=txty_pred, 
-            #                                                             pred_twth=twth_pred, 
-            #                                                             pred_iou=iou_pred,
-            #                                                             pred_iou_aware=iou_aware_pred,
-            #                                                             label=target, 
-            #                                                             num_classes=self.num_classes
-            #                                                             )
-            
-            # return cls_loss, txty_loss, twth_loss, iou_loss, iou_aware_loss  
-            return loss.loss(
+            # txtytwth_pred = torch.cat([txty_pred, twth_pred], dim=-1)
+            # x1y1x2y2_pred = (self.decode_boxes(txtytwth_pred) / self.input_size).view(-1, 4)
+            # x1y1x2y2_gt = target[:, :, -4:].view(-1, 4)
+            # iou_pred = box_ops.iou_score(x1y1x2y2_pred, x1y1x2y2_gt, batch_size=B)
+            return loss.lossSimple(
                             pred_cls=cls_pred, 
                             pred_txty=txty_pred, 
-                            pred_twth=twth_pred, 
-                            pred_iou=iou_pred,
-                            pred_iou_aware=iou_aware_pred,
+                            # pred_twth=twth_pred,
+                            # pred_iou=iou_pred,
+                            # pred_iou_aware=iou_aware_pred,
                             label=target, 
                             num_classes=self.num_classes
                             )
@@ -313,8 +315,9 @@ class CenterNetPlus(nn.Module):
                 # self.vis_fmap(p3[0], normal=True, name='p3')    
                 # self.vis_fmap(p4[0], normal=True, name='p4')    
                 # self.vis_fmap(p5[0], normal=True, name='p5')    
-                # self.vis_fmap(c5[0], normal=True, name='c5')    
-                self.vis_fmap(cls_pred[0][-1], normal=True, name='cls_pred_0')
+                # self.vis_fmap(c5[0], normal=True, name='c5')
+                self.show_feat(cls_pred[0][0], x[0])
+
 
                 # simple nms
                 hmax = F.max_pool2d(cls_pred, kernel_size=5, padding=2, stride=1)
@@ -322,33 +325,33 @@ class CenterNetPlus(nn.Module):
                 cls_pred *= keep
 
                 # decode box
-                txtytwth_pred = torch.cat([txty_pred, twth_pred], dim=1).permute(0, 2, 3, 1).contiguous().view(B, -1, 4)
+                # txtytwth_pred = torch.cat([txty_pred, twth_pred], dim=1).permute(0, 2, 3, 1).contiguous().view(B, -1, 4)
                 # [B, H*W, 4] -> [H*W, 4]
-                bbox_pred = torch.clamp((self.decode_boxes(txtytwth_pred) / self.input_size)[0], 0., 1.)
+                # bbox_pred = torch.clamp((self.decode_boxes(txtytwth_pred) / self.input_size)[0], 0., 1.)
 
                 # topk
-                topk_scores, topk_inds, topk_clses = self._topk(cls_pred)
+                # topk_scores, topk_inds, topk_clses = self._topk(cls_pred)
 
-                topk_scores = topk_scores[0].cpu().numpy()
-                topk_cls_inds = topk_clses[0].cpu().numpy()
-                topk_bbox_pred = bbox_pred[topk_inds[0]].cpu().numpy()
+                # topk_scores = topk_scores[0].cpu().numpy()
+                # topk_cls_inds = topk_clses[0].cpu().numpy()
+                # topk_bbox_pred = bbox_pred[topk_inds[0]].cpu().numpy()
 
-                if self.use_nms:
-                    # nms
-                    keep = np.zeros(len(topk_bbox_pred), dtype=np.int)
-                    for i in range(self.num_classes):
-                        inds = np.where(topk_cls_inds == i)[0]
-                        if len(inds) == 0:
-                            continue
-                        c_bboxes = topk_bbox_pred[inds]
-                        c_scores = topk_scores[inds]
-                        c_keep = self.nms(c_bboxes, c_scores)
-                        keep[inds[c_keep]] = 1
+                # if self.use_nms:
+                #     keep = np.zeros(len(topk_bbox_pred), dtype=np.int)
+                #     for i in range(self.num_classes):
+                #         inds = np.where(topk_cls_inds == i)[0]
+                #         if len(inds) == 0:
+                #             continue
+                #         c_bboxes = topk_bbox_pred[inds]
+                #         c_scores = topk_scores[inds]
+                #         c_keep = self.nms(c_bboxes, c_scores)
+                #         keep[inds[c_keep]] = 1
+                #
+                #     keep = np.where(keep > 0)
+                #     topk_bbox_pred = topk_bbox_pred[keep]
+                #     topk_scores = topk_scores[keep]
+                #     topk_cls_inds = topk_cls_inds[keep]
+                #
+                # return topk_bbox_pred, topk_scores, topk_cls_inds
 
-                    keep = np.where(keep > 0)
-                    topk_bbox_pred = topk_bbox_pred[keep]
-                    topk_scores = topk_scores[keep]
-                    topk_cls_inds = topk_cls_inds[keep]
 
-                return topk_bbox_pred, topk_scores, topk_cls_inds
-                

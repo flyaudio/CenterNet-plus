@@ -4,6 +4,7 @@ import json
 import torch
 import random
 import numpy as np
+from torch.autograd import Variable
 from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
 # from labelme import utils
@@ -27,14 +28,22 @@ g_labelIndexLut = {
 	'_background_': 5
 }
 
+class FileReader(cvUtility.FileReader):
+	def __init__(self, image_folder, suffixs=[".png"]):
+		super().__init__(image_folder, suffixs)
+
+	def validFile(self, fileName):
+		assert os.path.exists(fileName)
+		label = json.load(open(fileName))
+		return len(label['shapes']) > 0
+
+
 class PointsDataset(Dataset):
 	def __init__(self,
 				 data_dir=g_dataset_root,
-				 # json_file='instances_train2017.json',
-				 # name='train2017',
 				 img_size=512,
 				 train=False,
-				 stride=32,
+				 stride=16,
 				 transform=util.BaseTransform([512, 512], (0, 0, 0)),
 				 base_transform=util.BaseTransform([512, 512], (0, 0, 0)),
 				 mosaic=False):
@@ -49,26 +58,22 @@ class PointsDataset(Dataset):
 			debug (bool): if True, only one data id is selected from the dataset
 		"""
 		self.data_dir = data_dir
-		# self.json_file = json_file
-		# self.coco = COCO(self.data_dir + 'annotations/' + self.json_file)
-		# self.ids = self.coco.getImgIds()
-		# print("==1==", len(self.ids))
 		self.img_size = img_size
 		self.train = train
 		self.stride = stride
-		# self.class_ids = sorted(self.coco.getCatIds())  # 80个类的id
-		# self.name = name
+		self.name = "fastprint_knowledge_city"
 		self.transform = transform
 		self.base_transform = base_transform
 		self.mosaic = mosaic
-		self.reader = cvUtility.FileReader(os.path.join(data_dir,"labels"), [".json"])
+		self.reader = FileReader(os.path.join(data_dir,"labels"), [".json"])
 
 	def __len__(self):
 		return self.reader.max_idx
 
 	def pull_image(self, index:int):
 		label = self.reader.image_list[index]
-		assert os.path.exists(label)
+		# print("pull idx:{},{}".format(index, label))
+		# assert os.path.exists(label)
 		label = json.load(open(label))
 		img = cv2.imread(os.path.join(g_dataset_root, "images", label['imagePath']))
 		assert img.shape[0] == label["imageHeight"]
@@ -104,7 +109,7 @@ class PointsDataset(Dataset):
 		if self.train:
 			gt_tensor = create_gt.gt_creator(img_size=self.img_size,
 											 stride=self.stride,
-											 num_classes=1,
+											 num_classes=80,
 											 label_lists=gt)
 			return im, gt_tensor
 		else:
@@ -173,8 +178,6 @@ class PointsDataset(Dataset):
 			mosaic_tg = []
 			for i in range(4):
 				img_i, target_i = img_lists[i], tg_lists[i]
-				plt.figure("img_"+str(i))
-				plt.imshow(img_i)
 				h0, w0, _ = img_i.shape
 
 				# resize image to img_size
@@ -243,7 +246,63 @@ class PointsDataset(Dataset):
 
 			return torch.from_numpy(img).permute(2, 0, 1), target, height, width
 
+
+class Evaluator(object):
+	def __init__(self, train=True, stride=4, device='cpu'):
+		self.dataset = PointsDataset(train=train, stride=stride)
+		self.device = device
+
+	def evaluate(self, net):
+		net.eval()
+		for i in range(len(self.dataset)):
+			im, gt, h, w = self.dataset.pull_item(i)
+
+			x = Variable(im.unsqueeze(0)).to(self.device)
+			net(x)
+
+			im = im.permute(1, 2, 0) / 255.
+			# im = im.permute(1, 2, 0).numpy()[:, :, (2, 1, 0)].astype(np.uint8)
+			# im = im.copy()
+			# cv2.imshow("im", im)
+			# cv2.waitKey(500)
+			# plt.figure("im")
+			# plt.imshow(im)
+
+			# plt.show()
+			# assert False
+			# bboxes, scores, cls_inds = net(x)
+			# scale = np.array([[w, h, w, h]])
+			# bboxes *= scale
+
 #########################################################################################
+def test_evaluator():
+	device = 'cpu'
+	from models.centernet_plus_simple import CenterNetPlus
+	net = CenterNetPlus(device=device,
+					input_size=512,
+					num_classes=80,
+					trainable=False,
+					backbone='r18')
+
+	resume = '../weights/fastprint/centernet_plus/centernet_plus_18.pth'
+	print('load model: %s' % (resume))
+	assert os.path.exists(resume)
+	net.load_state_dict(torch.load(resume, map_location=device))
+	eva = Evaluator(device=device)
+	eva.evaluate(net)
+
+def test_image_viewer():
+	cap = cvUtility.ImageReader(util.g_nn_data, [".png"])
+	plt.figure()
+	while True:
+		ret, mat = cap.read()
+		assert ret
+		# plt.imshow(mat)
+		# plt.pause(2)
+		# plt.show()
+		cvUtility.show("mat", cv2.resize(mat,(1024,1024), interpolation=cv2.INTER_NEAREST))
+		cvUtility.wait()
+
 def test():
 	global g_dataset_root
 	json_path = os.path.join(g_dataset_root, 'labels/1.json')
@@ -273,7 +332,8 @@ def test_PointsDataset():
 	dataset = PointsDataset(stride=1)
 	ids_list_ = [i for i in range(0, dataset.reader.max_idx+1)]
 	id = random.sample(ids_list_, 1)
-	im, gt = dataset[id[0]]
+	# im, gt = dataset[id[0]]
+	im, gt = dataset[2015]
 	im = im.permute(1, 2, 0).numpy()[:, :, (2, 1, 0)].astype(np.uint8)
 	im = im.copy()
 	for box in gt:
@@ -306,6 +366,8 @@ def test_train_PointsDataset():
 		plt.show()
 
 if __name__ == '__main__':
-	test_PointsDataset()
+	# test_PointsDataset()
 	# test_train_PointsDataset()
+	test_evaluator()
+	# test_image_viewer()
 

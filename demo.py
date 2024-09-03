@@ -163,7 +163,6 @@ def detect(net, device, transform, thresh, mode='image', path_to_img=None, path_
 def run():
     args = parse_args()
 
-    # use cuda
     if args.cuda:
         device = torch.device("cuda")
     else:
